@@ -5,7 +5,7 @@ use winit::{
     event::*,
     event_loop::EventLoopBuilder,
     keyboard::{KeyCode, PhysicalKey},
-    window::{WindowBuilder, Window},
+    window::{Window, WindowBuilder},
 };
 
 struct State<'a> {
@@ -19,25 +19,22 @@ struct State<'a> {
 }
 
 impl<'a> State<'a> {
-
     async fn new(window: &'a Window) -> Self {
-
         let size = window.inner_size();
 
         let instance_descriptor = wgpu::InstanceDescriptor {
-            backends: wgpu::Backends::all(), ..Default::default()
+            backends: wgpu::Backends::all(),
+            ..Default::default()
         };
         let instance = wgpu::Instance::new(instance_descriptor);
-        let surface = instance.create_surface(window)
-            .unwrap();
+        let surface = instance.create_surface(window).unwrap();
 
         let adapter_descriptor = wgpu::RequestAdapterOptionsBase {
             power_preference: wgpu::PowerPreference::default(),
             compatible_surface: Some(&surface),
             force_fallback_adapter: false,
         };
-        let adapter = instance.request_adapter(&adapter_descriptor)
-            .await.unwrap();
+        let adapter = instance.request_adapter(&adapter_descriptor).await.unwrap();
 
         let device_descriptor = wgpu::DeviceDescriptor {
             required_features: wgpu::Features::empty(),
@@ -46,15 +43,15 @@ impl<'a> State<'a> {
         };
         let (device, queue) = adapter
             .request_device(&device_descriptor, None)
-            .await.unwrap();
-
+            .await
+            .unwrap();
 
         let surface_capabilities = surface.get_capabilities(&adapter);
         let surface_format = surface_capabilities
             .formats
             .iter()
             .copied()
-            .filter(|f | f.is_srgb())
+            .filter(|f| f.is_srgb())
             .next()
             .unwrap_or(surface_capabilities.formats[0]);
         let config = wgpu::SurfaceConfiguration {
@@ -65,7 +62,7 @@ impl<'a> State<'a> {
             present_mode: surface_capabilities.present_modes[0],
             alpha_mode: surface_capabilities.alpha_modes[0],
             view_formats: vec![],
-            desired_maximum_frame_latency: 2
+            desired_maximum_frame_latency: 2,
         };
         surface.configure(&device, &config);
 
@@ -94,17 +91,17 @@ impl<'a> State<'a> {
         }
     }
 
-    fn render(&mut self) -> Result<(), wgpu::SurfaceError>{
-
+    fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
         let drawable = self.surface.get_current_texture()?;
         let image_view_descriptor = wgpu::TextureViewDescriptor::default();
         let image_view = drawable.texture.create_view(&image_view_descriptor);
 
         let command_encoder_descriptor = wgpu::CommandEncoderDescriptor {
-            label: Some("Render Encoder")
+            label: Some("Render Encoder"),
         };
-        let mut command_encoder = self.device.create_command_encoder(&command_encoder_descriptor);
-        {
+        let mut command_encoder = self
+            .device
+            .create_command_encoder(&command_encoder_descriptor);
         let color_attachment = wgpu::RenderPassColorAttachment {
             view: &image_view,
             resolve_target: None,
@@ -113,7 +110,7 @@ impl<'a> State<'a> {
                     r: 0.75,
                     g: 0.5,
                     b: 0.25,
-                    a: 1.0
+                    a: 1.0,
                 }),
                 store: wgpu::StoreOp::Store,
             },
@@ -124,13 +121,13 @@ impl<'a> State<'a> {
             color_attachments: &[Some(color_attachment)],
             depth_stencil_attachment: None,
             occlusion_query_set: None,
-            timestamp_writes: None
+            timestamp_writes: None,
         };
 
-        let mut render_pass = command_encoder.begin_render_pass(&render_pass_descriptor);
-
-        render_pass.set_pipeline(&self.render_pipeline);
-        render_pass.draw(0..3, 0..1);
+        {
+            let mut render_pass = command_encoder.begin_render_pass(&render_pass_descriptor);
+            render_pass.set_pipeline(&self.render_pipeline);
+            render_pass.draw(0..3, 0..1);
         }
 
         self.queue.submit(std::iter::once(command_encoder.finish()));
@@ -162,38 +159,46 @@ async fn run() {
 
     let mut state = State::new(&window).await;
 
-    event_loop.run(move | event, elwt | match event {
-        Event::UserEvent(..) => {
-            state.window.request_redraw();
-        },
-
-        Event::WindowEvent { window_id, ref event } if window_id == state.window.id() => match event {
-
-            WindowEvent::Resized(physical_size) => state.resize(*physical_size),
-
-            WindowEvent::CloseRequested 
-            | WindowEvent::KeyboardInput { 
-                event: 
-                    KeyEvent { 
-                        physical_key: PhysicalKey::Code(KeyCode::Escape), 
-                        state: ElementState::Pressed, repeat: false, .. }, .. }=> {
-                println!("Goodbye see you!");
-                elwt.exit();
+    event_loop
+        .run(move |event, elwt| match event {
+            Event::UserEvent(..) => {
+                state.window.request_redraw();
             }
 
-            WindowEvent::RedrawRequested => match state.render() {
-                Ok(_) => {},
-                Err(wgpu::SurfaceError::Lost) => state.resize(state.size),
-                Err(wgpu::SurfaceError::OutOfMemory) => elwt.exit(),
-                Err(e) => eprintln!("{:?}", e),
-            }
+            Event::WindowEvent {
+                window_id,
+                ref event,
+            } if window_id == state.window.id() => match event {
+                WindowEvent::Resized(physical_size) => state.resize(*physical_size),
 
-            _ => (),
+                WindowEvent::CloseRequested
+                | WindowEvent::KeyboardInput {
+                    event:
+                        KeyEvent {
+                            physical_key: PhysicalKey::Code(KeyCode::Escape),
+                            state: ElementState::Pressed,
+                            repeat: false,
+                            ..
+                        },
+                    ..
+                } => {
+                    println!("Goodbye see you!");
+                    elwt.exit();
+                }
 
-        },
+                WindowEvent::RedrawRequested => match state.render() {
+                    Ok(_) => {}
+                    Err(wgpu::SurfaceError::Lost) => state.resize(state.size),
+                    Err(wgpu::SurfaceError::OutOfMemory) => elwt.exit(),
+                    Err(e) => eprintln!("{:?}", e),
+                },
 
-        _ => {},
-    }).expect("Error!");
+                _ => (),
+            },
+
+            _ => {}
+        })
+        .expect("Error!");
 }
 
 fn main() {

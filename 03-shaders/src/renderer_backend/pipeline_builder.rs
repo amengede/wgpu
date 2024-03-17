@@ -1,6 +1,5 @@
 use std::env::current_dir;
 use std::fs;
-use std::borrow::Cow;
 
 pub struct PipelineBuilder {
     shader_filename: String,
@@ -38,11 +37,11 @@ impl PipelineBuilder {
         filepath.push("src/");
         filepath.push(self.shader_filename.as_str());
         let filepath = filepath.into_os_string().into_string().unwrap();
-        let source_code: Cow<'_, str> = fs::read_to_string(filepath).unwrap().into();
+        let source_code = fs::read_to_string(filepath).expect("Can't read the shader source file.");
 
         let shader_module_descriptor = wgpu::ShaderModuleDescriptor {
             label: Some("Shader"),
-            source: wgpu::ShaderSource::Wgsl(source_code),
+            source: wgpu::ShaderSource::Wgsl(source_code.into()),
         };
         let shader_module = device.create_shader_module(shader_module_descriptor);
 
@@ -88,7 +87,7 @@ impl PipelineBuilder {
             depth_stencil: None,
             multisample: wgpu::MultisampleState {
                 count: 1,
-                mask: 0,
+                mask: !0,
                 alpha_to_coverage_enabled: false,
             },
             multiview: None,
