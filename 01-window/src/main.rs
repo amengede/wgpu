@@ -1,50 +1,27 @@
-use winit::{
-    event::{self, *},
-    event_loop::EventLoopBuilder,
-    keyboard::{KeyCode, PhysicalKey},
-    window::WindowBuilder,
-};
-
-#[derive(Debug, Clone, Copy)]
-enum CustomEvent {
-    Timer,
-}
+use glfw::{fail_on_errors, Action, Context, Key};
 
 fn main() {
-    env_logger::init();
 
-    let event_loop = EventLoopBuilder::<CustomEvent>::with_user_event()
-        .build()
-        .unwrap();
-    let window = WindowBuilder::new().build(&event_loop).unwrap();
-    let event_loop_proxy = event_loop.create_proxy();
+    let mut glfw = glfw::init(fail_on_errors!()).unwrap();
+    let (mut window, events) = 
+        glfw.create_window(800, 600, 
+            "It's WGPU time.", glfw::WindowMode::Windowed).unwrap();
 
-    std::thread::spawn(move || loop {
-        std::thread::sleep(std::time::Duration::from_millis(17));
-        event_loop_proxy.send_event(CustomEvent::Timer).ok();
-    });
+    window.set_key_polling(true);
+    window.set_mouse_button_polling(true);
+    window.make_current();
 
-    event_loop.run(move | event, elwt | match event {
-        Event::UserEvent(..) => {
-            //println!("New Frame");
-        },
-
-        Event::WindowEvent { window_id, ref event } if window_id == window.id() => match event {
-
-            WindowEvent::CloseRequested 
-            | WindowEvent::KeyboardInput { 
-                event: 
-                    KeyEvent { 
-                        physical_key: PhysicalKey::Code(KeyCode::Escape), 
-                        state: ElementState::Pressed, repeat: false, .. }, .. }=> {
-                println!("Goodbye see you!");
-                elwt.exit();
+    while !window.should_close() {
+        glfw.poll_events();
+        for (_, event) in glfw::flush_messages(&events) {
+            match event {
+                glfw::WindowEvent::Key(Key::Escape, _, Action::Press, _) => {
+                    window.set_should_close(true)
+                }
+                _ => {}
             }
+        }
 
-            _ => (),
-
-        },
-
-        _ => {},
-    }).expect("Error!");
+        window.swap_buffers();
+    }
 }
