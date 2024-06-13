@@ -1,32 +1,31 @@
-use winit::{
-    dpi::PhysicalSize,
-    event::*,
-    event_loop::EventLoopBuilder,
-    keyboard::{KeyCode, PhysicalKey},
-    window::{WindowBuilder, Window},
-};
+use glfw::{fail_on_errors, Action, Context, Key, Window};
 
 struct State<'a> {
+    instance: wgpu::Instance,
     surface: wgpu::Surface<'a>,
     device: wgpu::Device,
     queue: wgpu::Queue,
     config: wgpu::SurfaceConfiguration,
-    size: PhysicalSize<u32>,
-    window: &'a Window,
+    size: (i32, i32),
+    window: &'a mut Window,
 }
 
 impl<'a> State<'a> {
 
-    async fn new(window: &'a Window) -> Self {
+    async fn new(window: &'a mut Window) -> Self {
 
-        let size = window.inner_size();
+        let size = window.get_framebuffer_size();
 
         let instance_descriptor = wgpu::InstanceDescriptor {
             backends: wgpu::Backends::all(), ..Default::default()
         };
         let instance = wgpu::Instance::new(instance_descriptor);
-        let surface = instance.create_surface(window)
-            .unwrap();
+        let target = unsafe {
+            wgpu::SurfaceTargetUnsafe::from_window(&window)
+        }.unwrap();
+        let surface = unsafe {
+            instance.create_surface_unsafe(target)
+        }.unwrap();
 
         let adapter_descriptor = wgpu::RequestAdapterOptionsBase {
             power_preference: wgpu::PowerPreference::default(),
@@ -57,8 +56,8 @@ impl<'a> State<'a> {
         let config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
             format: surface_format,
-            width: size.width,
-            height: size.height,
+            width: size.0 as u32,
+            height: size.1 as u32,
             present_mode: surface_capabilities.present_modes[0],
             alpha_mode: surface_capabilities.alpha_modes[0],
             view_formats: vec![],
@@ -67,6 +66,7 @@ impl<'a> State<'a> {
         surface.configure(&device, &config);
 
         Self {
+            instance,
             window,
             surface,
             device,
@@ -76,13 +76,22 @@ impl<'a> State<'a> {
         }
     }
 
-    fn resize(&mut self, new_size: PhysicalSize<u32>) {
-        if new_size.width > 0 && new_size.height > 0 {
+    fn resize(&mut self, new_size: (i32, i32)) {
+        if new_size.0 > 0 && new_size.1 > 0 {
             self.size = new_size;
-            self.config.width = new_size.width;
-            self.config.height = new_size.height;
+            self.config.width = new_size.0 as u32;
+            self.config.height = new_size.1 as u32;
             self.surface.configure(&self.device, &self.config);
         }
+    }
+
+    fn update_surface(&mut self) {
+        let target = unsafe {
+            wgpu::SurfaceTargetUnsafe::from_window(&self.window)
+        }.unwrap();
+        self.surface = unsafe {
+            self.instance.create_surface_unsafe(target)
+        }.unwrap();
     }
 
     fn render(&mut self) -> Result<(), wgpu::SurfaceError>{
@@ -127,59 +136,60 @@ impl<'a> State<'a> {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
-enum CustomEvent {
-    Timer,
-}
-
 async fn run() {
-    env_logger::init();
 
-    let event_loop = EventLoopBuilder::<CustomEvent>::with_user_event()
-        .build()
+    let mut glfw = glfw::init(fail_on_errors!())
         .unwrap();
-    let window = WindowBuilder::new().build(&event_loop).unwrap();
-    let event_loop_proxy = event_loop.create_proxy();
+    let (mut window, events) = 
+        glfw.create_window(
+            800, 600, "It's WGPU time.", 
+            glfw::WindowMode::Windowed).unwrap();
+    
+    let mut state = State::new(&mut window).await;
 
-    std::thread::spawn(move || loop {
-        std::thread::sleep(std::time::Duration::from_millis(17));
-        event_loop_proxy.send_event(CustomEvent::Timer).ok();
-    });
+    state.window.set_framebuffer_size_polling(true);
+    state.window.set_key_polling(true);
+    state.window.set_mouse_button_polling(true);
+    state.window.set_pos_polling(true);
+    state.window.make_current();
 
-    let mut state = State::new(&window).await;
+    glfw.set_swap_interval(glfw::SwapInterval::Sync(1));
 
-    event_loop.run(move | event, elwt | match event {
-        Event::UserEvent(..) => {
-            state.window.request_redraw();
-        },
+    while !state.window.should_close() {
+        glfw.poll_events();
+        for (_, event) in glfw::flush_messages(&events) {
+            match event {
 
-        Event::WindowEvent { window_id, ref event } if window_id == state.window.id() => match event {
+                //Hit escape
+                glfw::WindowEvent::Key(Key::Escape, _, Action::Press, _) => {
+                    state.window.set_should_close(true)
+                }
 
-            WindowEvent::Resized(physical_size) => state.resize(*physical_size),
+                //Window was moved
+                glfw::WindowEvent::Pos(..) => {
+                    state.update_surface();
+                    state.resize(state.size);
+                }
 
-            WindowEvent::CloseRequested 
-            | WindowEvent::KeyboardInput { 
-                event: 
-                    KeyEvent { 
-                        physical_key: PhysicalKey::Code(KeyCode::Escape), 
-                        state: ElementState::Pressed, repeat: false, .. }, .. }=> {
-                println!("Goodbye see you!");
-                elwt.exit();
+                //Window was resized
+                glfw::WindowEvent::FramebufferSize(width, height) => {
+                    state.update_surface();
+                    state.resize((width, height));
+                }
+                _ => {}
             }
+        }
 
-            WindowEvent::RedrawRequested => match state.render() {
-                Ok(_) => {},
-                Err(wgpu::SurfaceError::Lost) => state.resize(state.size),
-                Err(wgpu::SurfaceError::OutOfMemory) => elwt.exit(),
-                Err(e) => eprintln!("{:?}", e),
-            }
-
-            _ => (),
-
-        },
-
-        _ => {},
-    }).expect("Error!");
+        match state.render() {
+            Ok(_) => {},
+            Err(wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated) => {
+                state.update_surface();
+                state.resize(state.size);
+            },
+            Err(e) => eprintln!("{:?}", e),
+        }
+        state.window.swap_buffers();
+    }
 }
 
 fn main() {
