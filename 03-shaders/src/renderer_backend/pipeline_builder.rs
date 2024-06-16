@@ -9,7 +9,7 @@ pub struct PipelineBuilder {
 }
 
 impl PipelineBuilder {
-
+    
     pub fn new() -> Self {
         PipelineBuilder {
             shader_filename: "dummy".to_string(),
@@ -19,8 +19,7 @@ impl PipelineBuilder {
         }
     }
 
-    pub fn set_shader_module(&mut self, 
-        shader_filename: &str, vertex_entry: &str, fragment_entry: &str) {
+    pub fn set_shader_module(&mut self, shader_filename: &str, vertex_entry: &str, fragment_entry: &str) {
 
         self.shader_filename = shader_filename.to_string();
         self.vertex_entry = vertex_entry.to_string();
@@ -28,19 +27,20 @@ impl PipelineBuilder {
     }
 
     pub fn set_pixel_format(&mut self, pixel_format: wgpu::TextureFormat) {
+
         self.pixel_format = pixel_format;
     }
 
     pub fn build_pipeline(&self, device: &wgpu::Device) -> wgpu::RenderPipeline {
-        
+
         let mut filepath = current_dir().unwrap();
         filepath.push("src/");
         filepath.push(self.shader_filename.as_str());
         let filepath = filepath.into_os_string().into_string().unwrap();
-        let source_code = fs::read_to_string(filepath).expect("Can't read the shader source file.");
+        let source_code = fs::read_to_string(filepath).expect("Can't read source code!");
 
         let shader_module_descriptor = wgpu::ShaderModuleDescriptor {
-            label: Some("Shader"),
+            label: Some("Shader Module"),
             source: wgpu::ShaderSource::Wgsl(source_code.into()),
         };
         let shader_module = device.create_shader_module(shader_module_descriptor);
@@ -50,7 +50,7 @@ impl PipelineBuilder {
             bind_group_layouts: &[],
             push_constant_ranges: &[],
         };
-        let render_pipeline_layout = device.create_pipeline_layout(&pipeline_layout_descriptor);
+        let pipeline_layout = device.create_pipeline_layout(&pipeline_layout_descriptor);
 
         let render_targets = [Some(wgpu::ColorTargetState {
             format: self.pixel_format,
@@ -60,7 +60,7 @@ impl PipelineBuilder {
 
         let render_pipeline_descriptor = wgpu::RenderPipelineDescriptor {
             label: Some("Render Pipeline"),
-            layout: Some(&render_pipeline_layout),
+            layout: Some(&pipeline_layout),
 
             vertex: wgpu::VertexState {
                 module: &shader_module,
@@ -90,7 +90,7 @@ impl PipelineBuilder {
                 mask: !0,
                 alpha_to_coverage_enabled: false,
             },
-            multiview: None,
+            multiview: None
         };
 
         device.create_render_pipeline(&render_pipeline_descriptor)
