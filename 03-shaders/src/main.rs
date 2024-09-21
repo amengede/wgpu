@@ -1,4 +1,4 @@
-use glfw::{fail_on_errors, Action, Context, Key, Window};
+use glfw::{fail_on_errors, Action, Key, Window, WindowHint, ClientApiHint};
 mod renderer_backend;
 use renderer_backend::pipeline_builder::PipelineBuilder;
 
@@ -23,12 +23,7 @@ impl<'a> State<'a> {
             backends: wgpu::Backends::all(), ..Default::default()
         };
         let instance = wgpu::Instance::new(instance_descriptor);
-        let target = unsafe {
-            wgpu::SurfaceTargetUnsafe::from_window(&window)
-        }.unwrap();
-        let surface = unsafe {
-            instance.create_surface_unsafe(target)
-        }.unwrap();
+        let surface = instance.create_surface(window.render_context()).unwrap();
 
         let adapter_descriptor = wgpu::RequestAdapterOptionsBase {
             power_preference: wgpu::PowerPreference::default(),
@@ -95,12 +90,7 @@ impl<'a> State<'a> {
     }
 
     fn update_surface(&mut self) {
-        let target = unsafe {
-            wgpu::SurfaceTargetUnsafe::from_window(&self.window)
-        }.unwrap();
-        self.surface = unsafe {
-            self.instance.create_surface_unsafe(target)
-        }.unwrap();
+        self.surface = self.instance.create_surface(self.window.render_context()).unwrap();
     }
 
     fn render(&mut self) -> Result<(), wgpu::SurfaceError>{
@@ -153,6 +143,7 @@ async fn run() {
 
     let mut glfw = glfw::init(fail_on_errors!())
         .unwrap();
+    glfw.window_hint(WindowHint::ClientApi(ClientApiHint::NoApi));
     let (mut window, events) = 
         glfw.create_window(
             800, 600, "It's WGPU time.", 
@@ -164,9 +155,6 @@ async fn run() {
     state.window.set_key_polling(true);
     state.window.set_mouse_button_polling(true);
     state.window.set_pos_polling(true);
-    state.window.make_current();
-
-    glfw.set_swap_interval(glfw::SwapInterval::Sync(1));
 
     while !state.window.should_close() {
         glfw.poll_events();
@@ -201,7 +189,6 @@ async fn run() {
             },
             Err(e) => eprintln!("{:?}", e),
         }
-        state.window.swap_buffers();
     }
 }
 
