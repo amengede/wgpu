@@ -10,3 +10,6 @@ glfw = "*"
 wgpu = "*"
 pollster = "*"
 glm = "*"
+[dependencies.image]
+version = "*"
+features = ["png", "jpeg"]
