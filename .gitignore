@@ -78,6 +78,8 @@ bld/
 [Bb]in/
 [Ll]og/
 [Ll]ogs/
+[Tt]arget/
+*/[Tt]arget/
 
 # Visual Studio 2015/2017 cache/options directory
 .vs/
