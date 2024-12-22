@@ -169,6 +169,8 @@ impl<'a> State<'a> {
 
     fn render(&mut self, quads: &Vec<Object>, tris: &Vec<Object>) -> Result<(), wgpu::SurfaceError>{
 
+        self.device.poll(wgpu::Maintain::wait());
+
         // Upload
         let mut offset: u64 = 0;
         for i in 0..quads.len() {
@@ -265,6 +267,7 @@ impl<'a> State<'a> {
             }
         }
         self.queue.submit(std::iter::once(command_encoder.finish()));
+        self.device.poll(wgpu::Maintain::wait());
 
         drawable.present();
 
