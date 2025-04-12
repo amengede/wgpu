@@ -1,29 +1,9 @@
 use glfw::Window;
-use crate::renderer::backend::{bind_group_layout, material::Material, mesh_builder, pipeline, ubo::UBO};
+use crate::renderer::backend::{
+    bind_group_layout, material::Material, 
+    mesh_builder, pipeline, ubo::{UBO, UBOGroup}};
 use crate::model::game_objects::Object;
 use glm::ext;
-
-pub struct World {
-    pub quads: Vec<Object>,
-    pub tris: Vec<Object>,
-}
-
-impl World {
-
-    pub fn new() -> Self {
-        World { quads: Vec::new(), tris: Vec::new() }
-    }
-
-    pub fn update(&mut self, dt: f32) {
-
-        for i in 0..self.tris.len() {
-            self.tris[i].angle = self.tris[i].angle + 0.001 * dt;
-            if self.tris[i].angle > 360.0 {
-                self.tris[i].angle -= 360.0;
-            }
-        }
-    }
-}
 
 pub struct State<'a> {
     instance: wgpu::Instance,
@@ -38,7 +18,8 @@ pub struct State<'a> {
     quad_mesh: mesh_builder::Mesh,
     triangle_material: Material,
     quad_material: Material,
-    ubo: Option<UBO>,
+    ubo: Option<UBOGroup>,
+    projection_ubo: UBO
 }
 
 impl<'a> State<'a> {
@@ -50,7 +31,7 @@ impl<'a> State<'a> {
         let instance_descriptor = wgpu::InstanceDescriptor {
             backends: wgpu::Backends::all(), ..Default::default()
         };
-        let instance = wgpu::Instance::new(instance_descriptor);
+        let instance = wgpu::Instance::new(&instance_descriptor);
         let surface = instance.create_surface(window.render_context()).unwrap();
 
         let adapter_descriptor = wgpu::RequestAdapterOptionsBase {
@@ -66,9 +47,10 @@ impl<'a> State<'a> {
             required_limits: wgpu::Limits::default(),
             memory_hints: wgpu::MemoryHints::Performance,
             label: Some("Device"),
+            trace: wgpu::Trace::Off,
         };
         let (device, queue) = adapter
-            .request_device(&device_descriptor, None)
+            .request_device(&device_descriptor)
             .await.unwrap();
 
 
@@ -118,11 +100,14 @@ impl<'a> State<'a> {
             builder.add_vertex_buffer_layout(mesh_builder::Vertex::get_layout());
             builder.add_bind_group_layout(&material_bind_group_layout);
             builder.add_bind_group_layout(&ubo_bind_group_layout);
+            builder.add_bind_group_layout(&ubo_bind_group_layout);
             render_pipeline = builder.build("Render Pipeline");
         }
 
         let triangle_material = Material::new("../img/winry.jpg", &device, &queue, "Triangle Material", &material_bind_group_layout);
         let quad_material = Material::new("../img/satin.jpg", &device, &queue, "Quad Material", &material_bind_group_layout);
+
+        let projection_ubo = UBO::new(&device, ubo_bind_group_layout);
 
         Self {
             instance,
@@ -138,6 +123,7 @@ impl<'a> State<'a> {
             triangle_material: triangle_material,
             quad_material: quad_material,
             ubo: None,
+            projection_ubo: projection_ubo
         }
     }
 
@@ -162,14 +148,21 @@ impl<'a> State<'a> {
             builder.add_ubo();
             ubo_bind_group_layout = builder.build("UBO Bind Group Layout");
         }
-        self.ubo = Some(UBO::new(&self.device, object_count, ubo_bind_group_layout));
+        self.ubo = Some(UBOGroup::new(&self.device, object_count, ubo_bind_group_layout));
     }
 
-    pub fn render(&mut self, quads: &Vec<Object>, tris: &Vec<Object>) -> Result<(), wgpu::SurfaceError>{
+    fn update_projection(&mut self) {
+        let fov_y: f32 = 90.0;
+        let aspect: f32 = 4.0/3.0;
+        let z_near = 0.1;
+        let z_far = 10.0;
+        let projection = ext::perspective(fov_y, aspect, z_near, z_far);
 
-        self.device.poll(wgpu::Maintain::wait());
+        self.projection_ubo.upload(&projection, &self.queue);
+    }
 
-        // Upload
+    fn update_transforms(&mut self, quads: &Vec<Object>, tris: &Vec<Object>) {
+        
         let mut offset: u64 = 0;
         for i in 0..quads.len() {
             let c0 = glm::Vec4::new(1.0, 0.0, 0.0, 0.0);
@@ -197,10 +190,19 @@ impl<'a> State<'a> {
                 * ext::translate(&m1, tris[i].position);
             self.ubo.as_mut().unwrap().upload(offset + i as u64, &matrix, &self.queue);
         }
+    }
+
+    pub fn render(&mut self, quads: &Vec<Object>, tris: &Vec<Object>) -> Result<(), wgpu::SurfaceError>{
+
+        self.device.poll(wgpu::MaintainBase::Wait).ok();
+
+        self.update_projection();
+
+        self.update_transforms(quads, tris);
 
         let event = self.queue.submit([]);
-        let maintain = wgpu::Maintain::WaitForSubmissionIndex(event);
-        self.device.poll(maintain);
+        let maintain = wgpu::MaintainBase::WaitForSubmissionIndex(event);
+        self.device.poll(maintain).ok();
 
         let drawable = self.surface.get_current_texture()?;
         let image_view_descriptor = wgpu::TextureViewDescriptor::default();
@@ -237,6 +239,11 @@ impl<'a> State<'a> {
             let mut renderpass = command_encoder.begin_render_pass(&render_pass_descriptor);
             renderpass.set_pipeline(&self.render_pipeline);
 
+            renderpass.set_bind_group(
+                2, 
+                &self.projection_ubo.bind_group, 
+                &[]);
+
             // Quads
             renderpass.set_bind_group(0, &self.quad_material.bind_group, &[]);
             renderpass.set_vertex_buffer(0, 
@@ -265,7 +272,7 @@ impl<'a> State<'a> {
             }
         }
         self.queue.submit(std::iter::once(command_encoder.finish()));
-        self.device.poll(wgpu::Maintain::wait());
+        self.device.poll(wgpu::MaintainBase::wait()).ok();
 
         drawable.present();
 

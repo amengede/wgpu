@@ -1,9 +1,9 @@
 mod renderer;
-use renderer::renderer::{World, State};
+use renderer::renderer::State;
 
 use glfw::{fail_on_errors, Action, Key, WindowHint, ClientApiHint};
 mod model;
-use model::game_objects::Object;
+use model::{game_objects::Object, world::World};
 
 async fn run() {
 
@@ -25,11 +25,11 @@ async fn run() {
     // Build world
     let mut world = World::new();
     world.tris.push(Object {
-        position: glm::Vec3::new(0.0, 0.0, 0.0),
+        position: glm::Vec3::new(0.0, 0.0, -1.0),
         angle: 0.0
     });
     world.quads.push(Object {
-        position: glm::Vec3::new(0.5, 0.0, 0.0),
+        position: glm::Vec3::new(0.5, 0.0, -2.0),
         angle: 0.0
     });
     state.build_ubos_for_objects(2);
